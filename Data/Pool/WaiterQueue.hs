@@ -11,7 +11,7 @@ import Control.Concurrent.STM
 -- | A FIFO queue that supports removing any element from the queue.
 --
 -- We have a pointer to the head of the list, and a pointer to the
--- final foward pointer in the list.
+-- final forward pointer in the list.
 data WaiterQueue a
   = WaiterQueue
       (TVar (TDList a))
@@ -34,11 +34,11 @@ newQueueIO = do
   pure (WaiterQueue emptyVarL emptyVarR)
 
 removeSelf ::
-  -- | 'WaiterQueue's final foward pointer pointer
+  -- | 'WaiterQueue's final forward pointer pointer
   TVar (TVar (TDList a)) ->
   -- | Our back pointer
   TVar (TVar (TDList a)) ->
-  -- | Our forward pointter
+  -- | Our forward pointer
   TVar (TDList a) ->
   STM ()
 removeSelf tv prevPP nextP = do

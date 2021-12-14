@@ -10,17 +10,13 @@ PROJECT_ROOT            := $(PROJECT_MKFILE_DIR)
 LOCAL_UNTRACK_DIR       := $(PROJECT_MKFILE_DIR)/.local
 DISTRIBUTIONS           := $(LOCAL_UNTRACK_DIR)/dist-newstyle/sdist
 
-
 update:
 	cabal v2-update
 	cabal v2-configure
 
-build: $(PROJECT_ROOT)/Data $(PROJECT_ROOT)/$(PROJECT_NAME).cabal
+build:	$(PROJECT_ROOT)/Data \
+		$(PROJECT_ROOT)/$(PROJECT_NAME).cabal
 	cabal v2-build
-
-.PHONY: run-example
-run-example:
-	echo "done"
 
 .PHONY: distribute
 distribute:
