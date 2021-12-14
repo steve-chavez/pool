@@ -1,3 +1,8 @@
+**This is a forked version of  the original [resource-pool](http://github.com/bos/pool) package
+that includes performance- and metrics-oriented PRs that are not merged into the upstream version.
+[Read more](https://github.com/bos/pool/issues/39#issuecomment-993843274).**
+
+
 # Welcome to pool
 
 pool is a fast Haskell library for managing medium-lifetime pooled
@@ -9,20 +14,16 @@ We are happy to receive bug reports, fixes, documentation enhancements,
 and other improvements.
 
 Please report bugs via the
-[github issue tracker](http://github.com/bos/pool/issues).
+[github issue tracker](http://github.com/avanov/pool/issues).
 
-Master [git repository](http://github.com/bos/pool):
+Master [git repository](http://github.com/avanov/pool):
 
-* `git clone git://github.com/bos/pool.git`
-
-There's also a [Mercurial mirror](http://bitbucket.org/bos/pool):
-
-* `hg clone http://bitbucket.org/bos/pool`
-
-(You can create and contribute changes using either git or Mercurial.)
+* `git clone git://github.com/avanov/pool.git`
 
 Authors
 -------
 
 This library is written and maintained by Bryan O'Sullivan,
 <bos@serpentine.com>.
+
+The current fork is maintained by Maxim Avanov <maxim.avanov@gmail.com>. 

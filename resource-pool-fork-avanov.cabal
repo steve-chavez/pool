@@ -1,4 +1,4 @@
-name:                resource-pool
+name:                resource-pool-fork-avanov
 version:             0.2.4.0
 synopsis:            A high-performance striped resource pooling implementation
 description:
@@ -6,19 +6,20 @@ description:
   flexibly-sized collections of resources such as database
   connections.
 
-homepage:            http://github.com/bos/pool
+homepage:            http://github.com/avanov/pool
 license:             BSD3
 license-file:        LICENSE
 author:              Bryan O'Sullivan <bos@serpentine.com>
 maintainer:          Bryan O'Sullivan <bos@serpentine.com>,
-                     Bas van Dijk <v.dijk.bas@gmail.com>
+                     Bas van Dijk <v.dijk.bas@gmail.com>,
+                     Maxim Avanov <maxim.avanov@gmail.com>
 copyright:           Copyright 2011 MailRank, Inc.
 category:            Data, Database, Network
 build-type:          Simple
 extra-source-files:
   README.markdown
 
-cabal-version:       >=1.8
+cabal-version:          >=1.10
 
 flag developer
   description: operate in developer mode
@@ -26,6 +27,7 @@ flag developer
   manual: True
 
 library
+  default-language:       Haskell2010
   exposed-modules:
     Data.Pool
   other-modules: Data.Pool.WaiterQueue
