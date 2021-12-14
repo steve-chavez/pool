@@ -40,7 +40,6 @@ module Data.Pool
     , stats
     ) where
 
-import Control.Applicative ((<$>), (<*>))
 import Control.Concurrent (ThreadId, forkIOWithUnmask, killThread, myThreadId, threadDelay)
 import Control.Concurrent.STM
 import Control.Exception (SomeException, onException, mask_)
@@ -48,6 +47,7 @@ import Control.Monad (forM_, forever, join, liftM5, unless, when)
 import Data.Hashable (hash)
 import Data.IORef (IORef, newIORef, mkWeakIORef)
 import Data.List (partition)
+import Data.Pool.WaiterQueue (WaiterQueue, newQueueIO, push, pop)
 import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Typeable (Typeable)
 import GHC.Conc.Sync (labelThread)
@@ -99,6 +99,8 @@ data LocalPool a = LocalPool {
     -- ^ Number of creates since last reset.
     , createFailureVar :: TVar Int
     -- ^ Number of create failures since last reset.
+    , waiters :: WaiterQueue (TMVar (Maybe (Entry a)))
+    -- ^ threads waiting for a resource
     , lfin :: IORef ()
     -- ^ empty value used to attach a finalizer to (internal)
     } deriving (Typeable)
@@ -172,7 +174,7 @@ createPool create destroy numStripes idleTime maxResources = do
   when (maxResources < 1) $
     modError "pool " $ "invalid maximum resource count " ++ show maxResources
   localPools <- V.replicateM numStripes $
-                LocalPool <$> newTVarIO 0 <*> newTVarIO [] <*> newTVarIO 0 <*> newTVarIO 0 <*> newTVarIO 0 <*> newTVarIO 0 <*> newIORef ()
+                LocalPool <$> newTVarIO 0 <*> newTVarIO [] <*> newTVarIO 0 <*> newTVarIO 0 <*> newTVarIO 0 <*> newTVarIO 0 <*> newQueueIO <*> newIORef ()
   reaperId <- forkIOLabeledWithUnmask "resource-pool: reaper" $ \unmask ->
                 unmask $ reaper destroy idleTime localPools
   fin <- newIORef ()
@@ -289,12 +291,28 @@ takeResource pool@Pool{..} = do
       (Entry{..}:es) -> writeTVar entries es >> return (return entry)
       [] -> do
         used <- readTVar inUse
-        when (used == maxResources) retry
-        writeTVar inUse $! used + 1
-        modifyTVar_ highwaterVar (`max` (used + 1))
-        modifyTVar_ createVar (+ 1)
-        return $
-          create `onException` atomically (modifyTVar_ createFailureVar (+ 1) >> modifyTVar_ inUse (subtract 1))
+        case used == maxResources of
+          False -> do
+            writeTVar inUse $! used + 1
+            modifyTVar_ highwaterVar (`max` (used + 1))
+            modifyTVar_ createVar (+ 1)
+            return $
+              create `onException` atomically (modifyTVar_ createFailureVar (+ 1) >> destroyResourceSTM local)
+          True -> do
+            var <- newEmptyTMVar
+            removeSelf <- push waiters var
+            let getResource x = case x of
+                  Just y -> pure (entry y)
+                  Nothing -> create `onException` atomically (destroyResourceSTM local)
+            let dequeue = do
+                  maybeEntry <- atomically $ do
+                    removeSelf
+                    tryTakeTMVar var
+                  atomically $ case maybeEntry of
+                    Nothing -> pure ()
+                    Just Nothing -> destroyResourceSTM local
+                    Just (Just v) -> putResourceSTM local v
+            return (getResource =<< atomically (takeTMVar var) `onException` dequeue)
   return (resource, local)
 #if __GLASGOW_HASKELL__ >= 700
 {-# INLINABLE takeResource #-}
@@ -336,7 +354,7 @@ tryTakeResource pool@Pool{..} = do
           else do
             writeTVar inUse $! used + 1
             return $ Just <$>
-              create `onException` atomically (modifyTVar_ inUse (subtract 1))
+              create `onException` atomically (destroyResourceSTM local)
   return $ (flip (,) local) <$> resource
 #if __GLASGOW_HASKELL__ >= 700
 {-# INLINABLE tryTakeResource #-}
@@ -356,21 +374,37 @@ getLocalPool Pool{..} = do
 -- | Destroy a resource. Note that this will ignore any exceptions in the
 -- destroy function.
 destroyResource :: Pool a -> LocalPool a -> a -> IO ()
-destroyResource Pool{..} LocalPool{..} resource = do
+destroyResource Pool{..} local resource = do
    destroy resource `E.catch` \(_::SomeException) -> return ()
-   atomically (modifyTVar_ inUse (subtract 1))
+   atomically (destroyResourceSTM local)
 #if __GLASGOW_HASKELL__ >= 700
 {-# INLINABLE destroyResource #-}
 #endif
 
 -- | Return a resource to the given 'LocalPool'.
 putResource :: LocalPool a -> a -> IO ()
-putResource LocalPool{..} resource = do
+putResource lp resource = do
     now <- getCurrentTime
-    atomically $ modifyTVar_ entries (Entry resource now:)
+    atomically $ putResourceSTM lp (Entry resource now)
 #if __GLASGOW_HASKELL__ >= 700
 {-# INLINABLE putResource #-}
 #endif
+
+putResourceSTM :: LocalPool a -> Entry a -> STM ()
+putResourceSTM LocalPool{..} resourceEntry = do
+    mWaiters <- pop waiters
+    case mWaiters of
+      Nothing -> modifyTVar_ entries (resourceEntry:)
+      Just w -> putTMVar w (Just resourceEntry)
+{-# INLINE putResourceSTM #-}
+
+destroyResourceSTM :: LocalPool a -> STM ()
+destroyResourceSTM LocalPool{..} = do
+  mwaiter <- pop waiters
+  case mwaiter of
+    Nothing -> modifyTVar_ inUse (subtract 1)
+    Just w -> putTMVar w Nothing
+{-# INLINE destroyResourceSTM #-}
 
 -- | Destroy all resources in all stripes in the pool. Note that this
 -- will ignore any exceptions in the destroy function.
